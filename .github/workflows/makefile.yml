@@ -1,7 +1,7 @@
 # .github/workflows/build.yml
 
 # 工作流的名称
-name: 编译 OrangeFox 恢复 (使用 GitHub Manifest 镜像)
+name: 编译 OrangeFox 恢复 (使用 GitHub Manifest 镜像 - 最终版本)
 
 # 触发工作流的事件
 on:
@@ -32,15 +32,14 @@ jobs:
           squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk python3 \
           libncurses5:i386 libstdc++6:i386 libz1:i386
 
-      # 步骤 2: 初始化并同步 OrangeFox 源码 (切换到 GitHub Manifest)
+      # 步骤 2: 初始化并同步 OrangeFox 源码 (修正 Manifest 分支名)
       - name: 2. 🦊 初始化和同步 OrangeFox 源码
         run: |
-          # **重点修复：切换到 GitHub 上的 twrp 极简 Manifest**
-          # 这是完全公开的，无需任何认证
+          # **关键修复：Manifest 分支名从 twrp-12.1 修正为 twrp-12.0**
           TWRP_MANIFEST_URL="https://github.com/minimal-manifest-twrp/platform_manifest_twrp_omni.git"
-          MANIFEST_BRANCH="twrp-12.1"
+          MANIFEST_BRANCH="twrp-12.0" # <--- 修正点 1
+          FOX_BRANCH="fox_12.0" # <--- 修正点 2： OrangeFox 专有组件分支
           
-          # 配置 git 身份
           git config --global user.name "Build Bot"
           git config --global user.email "buildbot@github.com"
           
@@ -55,11 +54,11 @@ jobs:
           echo "Initializing repo with public GitHub Manifest: $TWRP_MANIFEST_URL branch $MANIFEST_BRANCH"
           repo init -u $TWRP_MANIFEST_URL -b $MANIFEST_BRANCH
           
-          # 克隆 OrangeFox 专有部分（此步骤替代了 Manifest 文件中的专有项目）
-          git clone https://gitlab.com/OrangeFox/bootable/Recovery.git -b fox_12.1 bootable/recovery
-          git clone https://gitlab.com/OrangeFox/vendor/recovery.git -b fox_12.1 vendor/recovery
+          # 克隆 OrangeFox 专有部分（使用兼容的 fox_12.0 分支）
+          git clone https://gitlab.com/OrangeFox/bootable/Recovery.git -b $FOX_BRANCH bootable/recovery
+          git clone https://gitlab.com/OrangeFox/vendor/recovery.git -b $FOX_BRANCH vendor/recovery
           
-          # 同步源码 (这次应该能正常下载所有 AOSP/TWRP 基础组件)
+          # 同步源码
           repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
 
       # 步骤 3: 克隆你的设备树
