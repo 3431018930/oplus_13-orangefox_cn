@@ -1,7 +1,7 @@
 # .github/workflows/build.yml
 
 # 工作流的名称
-name: 编译 OrangeFox 恢复 (使用内置 Token)
+name: 编译 OrangeFox 恢复 (GitLab PAT 认证)
 
 # 触发工作流的事件
 on:
@@ -20,29 +20,30 @@ jobs:
       packages: write
 
     steps:
-      # 步骤 1: ⚙️ 安装构建所需的依赖项 (修复 lib32* 和 imagemagick 拼写错误)
+      # 步骤 1: ⚙️ 安装构建所需的依赖项 (已修复所有依赖和拼写问题)
       - name: 1. 安装依赖项 (兼容 Ubuntu 22.04+)
         run: |
           sudo apt-get update
-          
-          # 启用 i386 架构并更新
           sudo dpkg --add-architecture i386
           sudo apt-get update
           
-          # 核心依赖包列表。**imagemagick 拼写已修正**
+          # 核心依赖包列表。
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib \
           gcc-multilib git gnupg gperf imagemagick libelf-dev liblz4-tool libncurses5-dev \
           libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool \
           squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk python3 \
           libncurses5:i386 libstdc++6:i386 libz1:i386
 
-      # 步骤 2: 初始化并同步 OrangeFox 源码 (使用内置 GITHUB_TOKEN 认证)
+      # 步骤 2: 初始化并同步 OrangeFox 源码 (使用 GitLab PAT 认证)
       - name: 2. 🦊 初始化和同步 OrangeFox 源码
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GL_PAT: ${{ secrets.GITLAB_PAT }} # 使用您创建的 Secret
         run: |
-          # 配置 Git 使用内置令牌进行认证 (针对 GitHub 仓库)
-          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          # -----------------------------------------------------------------
+          # 修复：使用 GitLab PAT 配置 Git 凭证，针对 gitlab.com
+          # -----------------------------------------------------------------
+          # 配置 Git 替换所有对 GitLab 的 HTTPS 访问，使用 PAT 进行认证 (oauth2:TOKEN)
+          git config --global url."https://oauth2:${GL_PAT}@gitlab.com/".insteadOf "https://gitlab.com/"
           
           # 配置 git 身份
           git config --global user.name "Build Bot"
