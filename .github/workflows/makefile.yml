@@ -1,7 +1,7 @@
 # .github/workflows/build.yml
 
 # 工作流的名称
-name: 编译 OrangeFox 恢复 (GitLab 强制认证)
+name: 编译 OrangeFox 恢复 (GitLab 强制认证 V2)
 
 # 触发工作流的事件
 on:
@@ -20,14 +20,12 @@ jobs:
       packages: write
 
     steps:
-      # 步骤 1: ⚙️ 安装构建所需的依赖项 (已修复所有依赖和拼写问题)
+      # 步骤 1: ⚙️ 安装构建所需的依赖项
       - name: 1. 安装依赖项 (兼容 Ubuntu 22.04+)
         run: |
           sudo apt-get update
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          
-          # 核心依赖包列表。
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib \
           gcc-multilib git gnupg gperf imagemagick libelf-dev liblz4-tool libncurses5-dev \
           libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool \
@@ -37,30 +35,27 @@ jobs:
       # 步骤 2: 初始化并同步 OrangeFox 源码 (强制使用 GitLab PAT 认证)
       - name: 2. 🦊 初始化和同步 OrangeFox 源码
         env:
-          GL_PAT: ${{ secrets.GITLAB_PAT }} # 确保 GITLAB_PAT Secret 存在
+          GL_PAT: ${{ secrets.GITLAB_PAT }} # 确保 GITLAB_PAT Secret 存在且有效
         run: |
           # -----------------------------------------------------------------
-          # 核心修复：直接在 repo init URL 中注入 PAT，强制认证
+          # 核心修复：直接在 repo init URL 中注入 PAT，并确保 Manifest URL 大小写正确
           # -----------------------------------------------------------------
-          # 配置 git 身份
           git config --global user.name "Build Bot"
           git config --global user.email "buildbot@github.com"
           
-          # 创建工作目录并进入
           mkdir -p ~/orangefox ~/bin
           export PATH=~/bin:$PATH
           
-          # 下载 'repo' 工具
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
           
           cd ~/orangefox
           
-          # 强制认证：使用 PAT (oauth2) 认证 Manifest URL
+          # **注意：Manifest.git 变更为 manifest.git (小写)**
           echo "Initializing repo with forced GitLab PAT authentication..."
-          repo init -u https://oauth2:${GL_PAT}@gitlab.com/OrangeFox/manifest.git -b 12.1 --depth=1
+          repo init -u https://oauth2:${GL_PAT}@gitlab.com/OrangeFox/Manifest.git -b 12.1 --depth=1
           
-          # 此时 Manifest 已经获取，repo sync 应该能继承认证
+          # 同步源码
           repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
 
       # 步骤 3: 克隆你的设备树
