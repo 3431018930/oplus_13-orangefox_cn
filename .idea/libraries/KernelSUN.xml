@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="KernelSUN">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/recovery/root/FFiles/KernelSUN/KernelSUN.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

@@ -1,0 +1,303 @@
+name: 构建 OnePlus 13 (PJZ110) OrangeFox Recovery
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      MANIFEST_BRANCH:
+        description: 'OrangeFox 分支版本'
+        required: true
+        default: '14.1'
+        type: choice
+        options:
+          - '12.1'
+          - '14.1'
+      MAGISK_VERSION:
+        description: 'Magisk 版本'
+        required: true
+        default: 'v28.1'
+        type: string
+      USE_CCACHE:
+        description: '启用 CCache 加速编译'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  build:
+    name: 编译 OrangeFox Recovery
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    
+    env:
+      DEVICE_NAME: PJZ110
+      DEVICE_PATH: device/oplus/PJZ110
+      DEVICE_TREE: https://github.com/${{ github.repository }}
+      DEVICE_TREE_BRANCH: ${{ github.ref_name }}
+      BUILD_TARGET: recovery
+      MANIFEST_BRANCH: ${{ inputs.MANIFEST_BRANCH || '14.1' }}
+      MAGISK_VERSION: ${{ inputs.MAGISK_VERSION || 'v28.1' }}
+      USE_CCACHE: ${{ inputs.USE_CCACHE || true }}
+
+    steps:
+      - name: 第 1 步 - 检出仓库代码
+        uses: actions/checkout@v4
+        with:
+          path: device-tree
+
+      - name: 第 2 步 - 安装构建依赖
+        run: |
+          echo "📦 正在安装系统依赖包..."
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex \
+            g++-multilib gcc-multilib git git-lfs gnupg gperf \
+            imagemagick lib32readline-dev lib32z1-dev libelf-dev \
+            liblz4-tool libsdl1.2-dev libssl-dev libxml2 \
+            libxml2-utils lzop pngcrush rsync schedtool \
+            squashfs-tools xsltproc zip zlib1g-dev \
+            openjdk-11-jdk python3 python-is-python3 \
+            aria2 repo
+          echo "✅ 依赖安装完成"
+
+      - name: 第 3 步 - 配置 Git
+        run: |
+          echo "⚙️ 配置 Git 用户信息..."
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          echo "✅ Git 配置完成"
+
+      - name: 第 4 步 - 同步 OrangeFox 源码
+        run: |
+          echo "🦊 正在同步 OrangeFox ${{ env.MANIFEST_BRANCH }} 源码..."
+          mkdir -p ${GITHUB_WORKSPACE}/OrangeFox
+          cd ${GITHUB_WORKSPACE}/OrangeFox
+          git clone https://gitlab.com/OrangeFox/sync.git
+          cd sync
+          ./orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
+          echo "✅ OrangeFox 源码同步完成"
+
+      - name: 第 5 步 - 克隆 Android 13+ 依赖 (仅限 12.1 分支)
+        if: env.MANIFEST_BRANCH == '12.1'
+        run: |
+          echo "🔧 正在为 12.1 分支克隆 Android 13+ 依赖..."
+          cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
+          
+          # 更新 bootctrl 到 lineage-21.0
+          sed -i 's/<project name="android_hardware_qcom_bootctrl" path="hardware\/qcom-caf\/bootctrl" remote="LineageOS" revision="lineage-19.1-caf" \/>/<project name="android_hardware_qcom_bootctrl" path="hardware\/qcom-caf\/bootctrl" remote="LineageOS" revision="lineage-21.0-caf" \/>/g' ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/.repo/manifests/twrp-default.xml
+          
+          # 移除 TWRP recovery 项目
+          sed -i '/<project path="bootable\/recovery" name="android_bootable_recovery" remote="TeamWin" revision="android-12.1"\/>/d' ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/.repo/manifests/twrp-default.xml
+          
+          # 临时重命名 recovery 目录
+          mv ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/bootable/recovery ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/bootable/recovery-ofrp
+          
+          # 重新同步
+          repo sync
+          
+          # 恢复 recovery 目录名称
+          mv ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/bootable/recovery-ofrp ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/bootable/recovery
+          echo "✅ Android 13+ 依赖克隆完成"
+
+      - name: 第 6 步 - 修补源代码 (仅限 12.1 分支)
+        if: env.MANIFEST_BRANCH == '12.1'
+        run: |
+          echo "🩹 正在应用源码补丁..."
+          cd ${GITHUB_WORKSPACE}
+          git clone https://github.com/ymdzq/scripts of_patch
+          
+          cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/bootable/recovery
+          git fetch https://github.com/ymdzq/OrangeFox_Recovery fox_12.1 && git cherry-pick 4f65c9bd..7edc2281
+          echo "✅ 源码补丁应用完成"
+
+      - name: 第 7 步 - 克隆设备树
+        run: |
+          echo "🌳 正在克隆 OnePlus 13 (PJZ110) 设备树..."
+          cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
+          mkdir -p ./${{ env.DEVICE_PATH }}
+          cp -r ${GITHUB_WORKSPACE}/device-tree/* ./${{ env.DEVICE_PATH }}/
+          
+          cd ${{ env.DEVICE_PATH }}
+          COMMIT_ID=$(git rev-parse HEAD)
+          echo "COMMIT_ID=${COMMIT_ID}" >> $GITHUB_ENV
+          echo "📝 设备树提交 ID: ${COMMIT_ID}"
+          echo "✅ 设备树克隆完成"
+
+      - name: 第 8 步 - 更新 OrangeFox 内置 Magisk
+        run: |
+          echo "🔮 正在更新内置 Magisk 到 ${{ env.MAGISK_VERSION }}..."
+          git clone https://github.com/ymdzq/twrp_prebuilt ~/twrp_prebuilt
+          
+          cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/${{ env.DEVICE_PATH }}
+          
+          if ! grep -q 'FOX_USE_SPECIFIC_MAGISK_ZIP' vendorsetup.sh; then
+            echo 'export FOX_USE_SPECIFIC_MAGISK_ZIP=~/twrp_prebuilt/Magisk/${{ env.MAGISK_VERSION }}.apk' >> vendorsetup.sh
+            echo "✅ 已在 vendorsetup.sh 中添加 FOX_USE_SPECIFIC_MAGISK_ZIP"
+          else
+            sed -i 's/.*export FOX_USE_SPECIFIC_MAGISK_ZIP.*/export FOX_USE_SPECIFIC_MAGISK_ZIP=\~\/twrp_prebuilt\/Magisk\/${{ env.MAGISK_VERSION }}.apk/' vendorsetup.sh
+            echo "✅ 已更新 vendorsetup.sh 中的 FOX_USE_SPECIFIC_MAGISK_ZIP"
+          fi
+
+      - name: 第 9 步 - 更新 OrangeFox 内置 magiskboot
+        run: |
+          echo "🥾 正在更新内置 magiskboot..."
+          git clone https://github.com/magojohnji/magiskboot-linux ~/magiskboot-linux
+          
+          cp -f ~/magiskboot-linux/armeabi-v7a/magiskboot "${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/vendor/recovery/prebuilt/arm/magiskboot_updated"
+          cp -f ~/magiskboot-linux/arm64-v8a/magiskboot "${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/vendor/recovery/prebuilt/arm64/magiskboot_updated"
+          cp -f ~/magiskboot-linux/x86_64/magiskboot "${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/vendor/recovery/tools/magiskboot"
+          echo "✅ magiskboot 更新完成"
+
+      - name: 第 10 步 - 配置 CCache (可选)
+        if: env.USE_CCACHE == 'true'
+        run: |
+          echo "⚡ 正在配置 CCache 以加速编译..."
+          cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
+          
+          export USE_CCACHE=1
+          export CCACHE_EXEC=/usr/bin/ccache
+          ccache -M 10G
+          ccache -z
+          
+          # 禁用沙盒以兼容 CCache
+          sed -i 's/return sandboxConfig\.working/return false/g' build/soong/ui/build/sandbox_linux.go
+          echo "✅ CCache 配置完成"
+
+      - name: 第 11 步 - 编译 OrangeFox Recovery
+        run: |
+          echo "🔨 开始编译 OnePlus 13 (PJZ110) OrangeFox Recovery..."
+          cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
+          
+          set +e
+          export FOX_BUILD_DEVICE=${{ env.DEVICE_NAME }}
+          export ALLOW_MISSING_DEPENDENCIES=true
+          
+          if [[ ${{ env.USE_CCACHE }} == true ]]; then
+            export USE_CCACHE=1
+            export CCACHE_EXEC=/usr/bin/ccache
+          fi
+          
+          source build/envsetup.sh
+          set -e
+          
+          echo "🍽️ 执行 lunch twrp_${{ env.DEVICE_NAME }}-eng..."
+          lunch twrp_${{ env.DEVICE_NAME }}-eng
+          
+          echo "🧹 清理之前的编译产物..."
+          make clean
+          
+          echo "🚀 开始编译 (使用 $(nproc --all) 个线程)..."
+          mka adbd ${{ env.BUILD_TARGET }}image -j$(nproc --all)
+          
+          echo "✅ 编译完成！"
+
+      - name: 第 12 步 - 显示 CCache 统计
+        if: env.USE_CCACHE == 'true'
+        run: |
+          echo "📊 CCache 使用统计："
+          ccache -s
+
+      - name: 第 13 步 - 设置发布信息
+        run: |
+          echo "📋 正在设置发布信息..."
+          BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
+          echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
+          echo "📅 编译日期: ${BUILD_DATE}"
+          
+          cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
+          
+          DEVICE_TREE_URL="${{ env.DEVICE_TREE }}"
+          if [[ "${DEVICE_TREE_URL}" == *.git ]]; then
+            DEVICE_TREE_URL="${DEVICE_TREE_URL%.git}"
+          fi
+          echo "DEVICE_TREE_URL=${DEVICE_TREE_URL}" >> $GITHUB_ENV
+          echo "✅ 发布信息设置完成"
+
+      - name: 第 14 步 - 检查编译产物
+        run: |
+          echo "🔍 正在检查编译产物..."
+          cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}
+          
+          if ls OrangeFox*.img 1> /dev/null 2>&1; then
+            echo "✅ 找到 OrangeFox IMG 文件:"
+            ls -lh OrangeFox*.img
+          fi
+          
+          if ls OrangeFox*.zip 1> /dev/null 2>&1; then
+            echo "✅ 找到 OrangeFox ZIP 文件:"
+            ls -lh OrangeFox*.zip
+          fi
+
+      - name: 第 15 步 - 上传编译产物到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}/OrangeFox*.img
+            OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}/OrangeFox*.zip
+          name: OrangeFox Recovery for OnePlus 13 (PJZ110) // ${{ env.BUILD_DATE }}
+          tag_name: ${{ github.run_id }}
+          body: |
+            ## 🦊 OrangeFox Recovery 编译版本 - 非官方
+            
+            ### 📱 设备信息
+            - **设备名称**: OnePlus 13
+            - **代号**: PJZ110
+            - **厂商**: OPLUS
+            
+            ### 🔧 编译信息
+            - **OrangeFox 分支**: fox_${{ env.MANIFEST_BRANCH }}
+            - **编译日期**: ${{ env.BUILD_DATE }}
+            - **Magisk 版本**: ${{ env.MAGISK_VERSION }}
+            - **使用 CCache**: ${{ env.USE_CCACHE }}
+            
+            ### 🌳 设备树
+            - **仓库**: [设备树/分支](${{ env.DEVICE_TREE_URL }}/tree/${{ env.DEVICE_TREE_BRANCH }})
+            - **提交**: 编译时的最新 [提交](${{ env.DEVICE_TREE_URL }}/commit/${{ env.COMMIT_ID }})
+            
+            ### ✨ 功能特性
+            - ✅ 显示
+            - ✅ 触摸 (包括 FastbootD)
+            - ✅ 解密
+            - ✅ 刷机
+            - ✅ 备份与恢复
+            - ✅ MTP/OTG 存储
+            - ✅ ADB/FastbootD
+            - ✅ 恢复出厂设置
+            - ✅ 振动器
+            - ✅ 显示与振动设置
+            
+            ### 📦 包含的 Root 工具
+            - KernelSU (安装/卸载程序)
+            - KernelSUN
+            - SukiSU
+            
+            ### ⚠️ 免责声明
+            此为非官方编译版本，仅供学习交流使用。刷入前请做好备份，刷机有风险，请谨慎操作！
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 第 16 步 - 上传编译产物到 Artifacts (备份)
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrangeFox-OnePlus13-PJZ110-${{ env.BUILD_DATE }}
+          path: |
+            OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}/OrangeFox*.img
+            OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}/OrangeFox*.zip
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: ✅ 构建完成
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🎉 OrangeFox Recovery 编译成功！"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📱 设备: OnePlus 13 (PJZ110)"
+          echo "🦊 版本: fox_${{ env.MANIFEST_BRANCH }}"
+          echo "📅 日期: ${{ env.BUILD_DATE }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+

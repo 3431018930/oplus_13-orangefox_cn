@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="KernelSU_uninstaller">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/recovery/root/FFiles/KernelSU_uninstaller/KernelSU_uninstaller.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

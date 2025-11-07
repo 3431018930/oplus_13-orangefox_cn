@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="KernelSU">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/recovery/root/FFiles/KernelSU/KernelSU.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
