@@ -5,33 +5,38 @@ name: 编译 OrangeFox 恢复
 
 # 触发工作流的事件
 on:
-  # 1. 当有代码推送到 'main' 分支时
+  # 1. 当有代码推送到 'main' 或 'master' 分支时
   push:
     branches:
       - main
-      - master  # 也包含 master 分支以防万一
+      - master
   # 2. 允许你从 GitHub Actions 页面手动触发此工作流
   workflow_dispatch:
 
 jobs:
   build:
-    # 运行此作业的操作系统
-    runs-on: ubuntu-latest
+    # 运行此作业的操作系统，使用 ubuntu-22.04 以提供更高的稳定性
+    runs-on: ubuntu-22.04
 
     steps:
-      # 步骤 1: 安装构建所需的依赖项
-      - name: 1. 安装依赖项
+      # 步骤 1: 安装构建所需的依赖项 (已修复 lib32ncurses5-dev 错误)
+      - name: 1. ⚙️ 安装依赖项 (兼容 Ubuntu 22.04+)
         run: |
           sudo apt-get update
+          
+          # 启用 i386 架构并更新，以确保能安装 32 位兼容库
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          
+          # 核心依赖包列表。移除了废弃的 lib32* 包，并加入了 32 位兼容库
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib \
-          gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev \
-          lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev \
-          libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools \
-          xsltproc zip zlib1g-dev openjdk-11-jdk python3
+          gcc-multilib git gnupg gperf imagemagick libelf-dev liblz4-tool libncurses5-dev \
+          libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool \
+          squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk python3 \
+          libncurses5:i386 libstdc++6:i386 libz1:i386
 
       # 步骤 2: 初始化并同步 OrangeFox 源码
-      # 注意：我们将使用你的设备树仓库，所以这里不 'checkout'
-      - name: 2. 初始化和同步源码
+      - name: 2. 🦊 初始化和同步 OrangeFox 源码
         run: |
           # 配置 git
           git config --global user.name "Build Bot"
@@ -42,53 +47,46 @@ jobs:
           cd ~/orangefox
           
           # 下载 'repo' 工具
+          mkdir -p ~/bin
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
           export PATH=~/bin:$PATH
           
-          # 初始化 OrangeFox 12.1 源码库 (你需要确认这个分支是否正确)
+          # 初始化 OrangeFox 12.1 源码库
           echo "Syncing OrangeFox sources..."
           repo init -u https://gitlab.com/OrangeFox/manifest.git -b 12.1 --depth=1
           
-          # 同步源码 (只拉取当前分支，加快速度)
-          repo sync --current-branch --no-tags --no-clone-bundle --force-sync -j$(nproc --all)
+          # 同步源码 (使用 -c 和 -j 优化速度)
+          repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
 
       # 步骤 3: 克隆你的设备树
-      - name: 3. 克隆设备树
+      - name: 3. 🌳 克隆设备树
         run: |
           cd ~/orangefox
-          # -----------------------------------------------------------------
-          # 警告: 你必须修改 'device/oplus/oplus_13' 这个路径
-          # 这应该与你的设备树在 OrangeFox 源码中的预期路径相匹配
-          # -----------------------------------------------------------------
+          # ⚠️ **必改项:** 确保路径与你的设备树结构匹配
           git clone https://github.com/3431018930/oplus_13-orangefox_cn.git device/oplus/oplus_13
 
       # 步骤 4: 开始编译
-      - name: 4. 运行编译
+      - name: 4. 🔨 运行编译
         run: |
           cd ~/orangefox
           
           # 设置构建环境
           . build/envsetup.sh
           
-          # -----------------------------------------------------------------
-          # 警告: 你必须修改 'omni_oplus_13' 
-          # 这应该是你的 'lunch' 目标
-          # -----------------------------------------------------------------
+          # ⚠️ **必改项:** 确保 'lunch' 目标正确
           export ALLOW_MISSING_DEPENDENCIES=true
           export FOX_USE_TWRP_RECOVERY_IMAGE_BUILDER=1
           lunch omni_oplus_13-eng
           
           # 开始编译 'recoveryimage'
-          mka recoveryimage -j$(nproc --all)
+          mka recoveryimage -j$(nproc)
 
       # 步骤 5: 上传编译产物 (recovery.img)
-      - name: 5. 上传产物
+      - name: 5. 📤 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: OrangeFox-Recovery
-          # -----------------------------------------------------------------
-          # 警告: 你必须修改 'out/target/product/oplus_13/recovery.img'
-          # 这应该是指向你编译生成的 recovery.img 文件的确切路径
-          # -----------------------------------------------------------------
+          name: OrangeFox-Recovery-${{ github.sha }}
+          # ⚠️ **必改项:** 确保产物路径正确
           path: ~/orangefox/out/target/product/oplus_13/recovery.img
+          retention-days: 7 # 可选：设置产物保留期限
