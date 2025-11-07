@@ -1,51 +1,56 @@
 # .github/workflows/build.yml
 
 # 工作流的名称
-name: 编译 OrangeFox 恢复
+name: 编译 OrangeFox 恢复 (使用内置 Token)
 
 # 触发工作流的事件
 on:
-  # 当有代码推送到 'main' 或 'master' 分支时
   push:
     branches:
       - main
       - master
-  # 允许你从 GitHub Actions 页面手动触发此工作流
   workflow_dispatch:
 
 jobs:
   build:
-    # 使用明确的 Ubuntu 版本以确保环境稳定性
+    # 操作系统
     runs-on: ubuntu-22.04
+    # ⚠️ 注意：赋予工作流写入权限，以允许使用 GITHUB_TOKEN
+    permissions:
+      contents: write # 允许写入，用于某些 Git 操作，以防万一
+      packages: write
 
     steps:
-      # 步骤 1: 🔑 配置 SSH 认证 (解决 repo sync 认证问题)
-      # 确保你已在仓库 Secret 中添加了 SSH_PRIVATE_KEY
-      - name: 1. 配置 SSH 认证
-        uses: webfactory/ssh-agent@v0.9.1
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      # 步骤 2: ⚙️ 安装构建所需的依赖项 (修复 lib32ncurses5-dev 错误)
-      - name: 2. 安装依赖项 (兼容 Ubuntu 22.04+)
+      # 步骤 1: ⚙️ 安装构建所需的依赖项 (修复 lib32ncurses5-dev 错误)
+      - name: 1. 安装依赖项 (兼容 Ubuntu 22.04+)
         run: |
           sudo apt-get update
           
-          # 启用 i386 架构并更新，以确保能安装 32 位兼容库
+          # 启用 i386 架构并更新
           sudo dpkg --add-architecture i386
           sudo apt-get update
           
-          # 核心依赖包列表。移除了废弃的 lib32* 包，并加入了 32 位兼容库
+          # 核心依赖包列表。
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib \
-          gcc-multilib git gnupg gperf imagemagick libelf-dev liblz4-tool libncurses5-dev \
+          gcc-multilib git gnupg gperf imagemagik libelf-dev liblz4-tool libncurses5-dev \
           libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool \
           squashfs-tools xsltproc zip zlib1g-dev openjdk-11-jdk python3 \
           libncurses5:i386 libstdc++6:i386 libz1:i386
 
-      # 步骤 3: 初始化并同步 OrangeFox 源码
-      - name: 3. 🦊 初始化和同步 OrangeFox 源码
+      # 步骤 2: 初始化并同步 OrangeFox 源码 (使用内置 GITHUB_TOKEN 认证)
+      - name: 2. 🦊 初始化和同步 OrangeFox 源码
+        env:
+          # 暴露 GITHUB_TOKEN 到环境变量
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 配置 git
+          # -----------------------------------------------------------------
+          # 重点修复：使用内置 GITHUB_TOKEN 配置 Git 凭证
+          # GITHUB_TOKEN 通常只对 GitHub 仓库有效。
+          # -----------------------------------------------------------------
+          # 配置 Git 使用内置令牌进行认证 (针对 GitHub 仓库)
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          
+          # 配置 git 身份
           git config --global user.name "Build Bot"
           git config --global user.email "buildbot@github.com"
           
@@ -59,25 +64,23 @@ jobs:
           
           cd ~/orangefox
           
-          # 初始化 OrangeFox 12.1 源码库
+          # 初始化 OrangeFox 12.1 源码库 (Manifest 仓库是公开的，无需认证)
           repo init -u https://gitlab.com/OrangeFox/manifest.git -b 12.1 --depth=1
           
-          # 同步源码 (使用 -c 和 -j 优化速度)
+          # 同步源码
           repo sync -c --no-tags --no-clone-bundle --force-sync -j$(nproc)
 
-      # 步骤 4: 克隆你的设备树
-      - name: 4. 🌳 克隆设备树
+      # 步骤 3: 克隆你的设备树
+      - name: 3. 🌳 克隆设备树
         run: |
           cd ~/orangefox
           # ⚠️ **必改项 #1:** 确保路径与你的设备树结构匹配
           git clone https://github.com/3431018930/oplus_13-orangefox_cn.git device/oplus/oplus_13
 
-      # 步骤 5: 开始编译
-      - name: 5. 🔨 运行编译
+      # 步骤 4: 开始编译
+      - name: 4. 🔨 运行编译
         run: |
           cd ~/orangefox
-          
-          # 设置构建环境
           . build/envsetup.sh
           
           # ⚠️ **必改项 #2:** 确保 'lunch' 目标正确
@@ -88,11 +91,10 @@ jobs:
           # 开始编译 'recoveryimage'
           mka recoveryimage -j$(nproc)
 
-      # 步骤 6: 上传编译产物 (recovery.img)
-      - name: 6. 📤 上传产物
+      # 步骤 5: 上传编译产物 (recovery.img)
+      - name: 5. 📤 上传产物
         uses: actions/upload-artifact@v4
         with:
-          # 产物名称包含 Git SHA，方便区分
           name: OrangeFox-Recovery-${{ github.sha }}
           # ⚠️ **必改项 #3:** 确保产物路径正确
           path: ~/orangefox/out/target/product/oplus_13/recovery.img
