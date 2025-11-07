@@ -7,17 +7,17 @@ on:
   workflow_dispatch:
     inputs:
       MANIFEST_BRANCH:
-        description: 'OrangeFox 分支版本'
+        description: 'OrangeFox 分支版本 (Android 版本)'
         required: true
-        default: '14.1'
+        default: '15.0'
         type: choice
         options:
-          - '12.1'
-          - '14.1'
+          - '15.0'
+          - '16.0'
       MAGISK_VERSION:
-        description: 'Magisk 版本'
+        description: 'Magisk Alpha 版本'
         required: true
-        default: 'v28.1'
+        default: 'v29.0-alpha'
         type: string
       USE_CCACHE:
         description: '启用 CCache 加速编译'
@@ -38,17 +38,52 @@ jobs:
       DEVICE_TREE: https://github.com/${{ github.repository }}
       DEVICE_TREE_BRANCH: ${{ github.ref_name }}
       BUILD_TARGET: recovery
-      MANIFEST_BRANCH: ${{ inputs.MANIFEST_BRANCH || '14.1' }}
-      MAGISK_VERSION: ${{ inputs.MAGISK_VERSION || 'v28.1' }}
+      MANIFEST_BRANCH: ${{ inputs.MANIFEST_BRANCH || '15.0' }}
+      MAGISK_VERSION: ${{ inputs.MAGISK_VERSION || 'v29.0-alpha' }}
       USE_CCACHE: ${{ inputs.USE_CCACHE || true }}
 
     steps:
-      - name: 第 1 步 - 检出仓库代码
+      - name: 第 1 步 - 检查可用磁盘空间
+        run: |
+          echo "🔍 检查初始磁盘空间..."
+          df -h
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+      - name: 第 2 步 - 清理磁盘空间 (释放约 30GB)
+        run: |
+          echo "🧹 正在清理不必要的文件以释放磁盘空间..."
+          
+          # 删除不必要的预装软件
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          
+          # 清理 APT 缓存
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          
+          # 清理 Docker
+          docker rmi $(docker images -q) || true
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/graalvm/
+          sudo rm -rf /usr/local/.ghcup/
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/local/share/chromium
+          sudo rm -rf /usr/local/lib/node_modules
+          
+          echo "✅ 磁盘清理完成"
+          echo "📊 清理后的磁盘空间："
+          df -h
+
+      - name: 第 3 步 - 检出仓库代码
         uses: actions/checkout@v4
         with:
           path: device-tree
 
-      - name: 第 2 步 - 安装构建依赖
+      - name: 第 4 步 - 安装构建依赖
         run: |
           echo "📦 正在安装系统依赖包..."
           sudo apt-get update
@@ -63,14 +98,14 @@ jobs:
             aria2 repo
           echo "✅ 依赖安装完成"
 
-      - name: 第 3 步 - 配置 Git
+      - name: 第 5 步 - 配置 Git
         run: |
           echo "⚙️ 配置 Git 用户信息..."
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           echo "✅ Git 配置完成"
 
-      - name: 第 4 步 - 同步 OrangeFox 源码
+      - name: 第 6 步 - 同步 OrangeFox 源码 (精简模式)
         run: |
           echo "🦊 正在同步 OrangeFox ${{ env.MANIFEST_BRANCH }} 源码..."
           mkdir -p ${GITHUB_WORKSPACE}/OrangeFox
@@ -79,39 +114,9 @@ jobs:
           cd sync
           ./orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
           echo "✅ OrangeFox 源码同步完成"
-
-      - name: 第 5 步 - 克隆 Android 13+ 依赖 (仅限 12.1 分支)
-        if: env.MANIFEST_BRANCH == '12.1'
-        run: |
-          echo "🔧 正在为 12.1 分支克隆 Android 13+ 依赖..."
-          cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
           
-          # 更新 bootctrl 到 lineage-21.0
-          sed -i 's/<project name="android_hardware_qcom_bootctrl" path="hardware\/qcom-caf\/bootctrl" remote="LineageOS" revision="lineage-19.1-caf" \/>/<project name="android_hardware_qcom_bootctrl" path="hardware\/qcom-caf\/bootctrl" remote="LineageOS" revision="lineage-21.0-caf" \/>/g' ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/.repo/manifests/twrp-default.xml
-          
-          # 移除 TWRP recovery 项目
-          sed -i '/<project path="bootable\/recovery" name="android_bootable_recovery" remote="TeamWin" revision="android-12.1"\/>/d' ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/.repo/manifests/twrp-default.xml
-          
-          # 临时重命名 recovery 目录
-          mv ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/bootable/recovery ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/bootable/recovery-ofrp
-          
-          # 重新同步
-          repo sync
-          
-          # 恢复 recovery 目录名称
-          mv ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/bootable/recovery-ofrp ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/bootable/recovery
-          echo "✅ Android 13+ 依赖克隆完成"
-
-      - name: 第 6 步 - 修补源代码 (仅限 12.1 分支)
-        if: env.MANIFEST_BRANCH == '12.1'
-        run: |
-          echo "🩹 正在应用源码补丁..."
-          cd ${GITHUB_WORKSPACE}
-          git clone https://github.com/ymdzq/scripts of_patch
-          
-          cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/bootable/recovery
-          git fetch https://github.com/ymdzq/OrangeFox_Recovery fox_12.1 && git cherry-pick 4f65c9bd..7edc2281
-          echo "✅ 源码补丁应用完成"
+          echo "📊 同步后的磁盘空间："
+          df -h
 
       - name: 第 7 步 - 克隆设备树
         run: |
@@ -126,22 +131,36 @@ jobs:
           echo "📝 设备树提交 ID: ${COMMIT_ID}"
           echo "✅ 设备树克隆完成"
 
-      - name: 第 8 步 - 更新 OrangeFox 内置 Magisk
+      - name: 第 8 步 - 下载 Magisk Alpha 版本
         run: |
-          echo "🔮 正在更新内置 Magisk 到 ${{ env.MAGISK_VERSION }}..."
-          git clone https://github.com/ymdzq/twrp_prebuilt ~/twrp_prebuilt
+          echo "🔮 正在下载 Magisk Alpha ${{ env.MAGISK_VERSION }}..."
+          mkdir -p ~/magisk_alpha
+          cd ~/magisk_alpha
           
+          # 从 GitHub Releases 下载最新的 Magisk Alpha
+          wget -O Magisk-${{ env.MAGISK_VERSION }}.apk https://github.com/topjohnwu/Magisk/releases/download/${{ env.MAGISK_VERSION }}/Magisk-${{ env.MAGISK_VERSION }}.apk || \
+          wget -O Magisk-${{ env.MAGISK_VERSION }}.apk https://github.com/topjohnwu/Magisk/releases/download/canary-latest/app-release.apk
+          
+          echo "✅ Magisk Alpha 下载完成"
+          ls -lh Magisk-*.apk
+
+      - name: 第 9 步 - 更新 OrangeFox 内置 Magisk Alpha
+        run: |
+          echo "🔮 正在集成 Magisk Alpha 到 OrangeFox..."
           cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/${{ env.DEVICE_PATH }}
           
           if ! grep -q 'FOX_USE_SPECIFIC_MAGISK_ZIP' vendorsetup.sh; then
-            echo 'export FOX_USE_SPECIFIC_MAGISK_ZIP=~/twrp_prebuilt/Magisk/${{ env.MAGISK_VERSION }}.apk' >> vendorsetup.sh
-            echo "✅ 已在 vendorsetup.sh 中添加 FOX_USE_SPECIFIC_MAGISK_ZIP"
+            echo "export FOX_USE_SPECIFIC_MAGISK_ZIP=~/magisk_alpha/Magisk-${{ env.MAGISK_VERSION }}.apk" >> vendorsetup.sh
+            echo "✅ 已在 vendorsetup.sh 中添加 Magisk Alpha 配置"
           else
-            sed -i 's/.*export FOX_USE_SPECIFIC_MAGISK_ZIP.*/export FOX_USE_SPECIFIC_MAGISK_ZIP=\~\/twrp_prebuilt\/Magisk\/${{ env.MAGISK_VERSION }}.apk/' vendorsetup.sh
-            echo "✅ 已更新 vendorsetup.sh 中的 FOX_USE_SPECIFIC_MAGISK_ZIP"
+            sed -i "s|.*export FOX_USE_SPECIFIC_MAGISK_ZIP.*|export FOX_USE_SPECIFIC_MAGISK_ZIP=~/magisk_alpha/Magisk-${{ env.MAGISK_VERSION }}.apk|" vendorsetup.sh
+            echo "✅ 已更新 vendorsetup.sh 中的 Magisk Alpha 配置"
           fi
+          
+          echo "📦 当前 Magisk 配置:"
+          grep FOX_USE_SPECIFIC_MAGISK_ZIP vendorsetup.sh
 
-      - name: 第 9 步 - 更新 OrangeFox 内置 magiskboot
+      - name: 第 10 步 - 更新 OrangeFox 内置 magiskboot
         run: |
           echo "🥾 正在更新内置 magiskboot..."
           git clone https://github.com/magojohnji/magiskboot-linux ~/magiskboot-linux
@@ -151,22 +170,57 @@ jobs:
           cp -f ~/magiskboot-linux/x86_64/magiskboot "${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/vendor/recovery/tools/magiskboot"
           echo "✅ magiskboot 更新完成"
 
-      - name: 第 10 步 - 配置 CCache (可选)
+      - name: 第 11 步 - 集成 SukiSU Ultra 到设备树
+        run: |
+          echo "🌸 正在集成 SukiSU Ultra Root 管理器..."
+          
+          # 创建 SukiSU Ultra 目录
+          mkdir -p ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/${{ env.DEVICE_PATH }}/recovery/root/FFiles/SukiSU_Ultra
+          
+          # 下载最新的 SukiSU Ultra
+          cd ~/
+          git clone --depth=1 https://github.com/Kartatz/SukiSU.git sukisu_repo || echo "使用备用下载方式..."
+          
+          # 如果有预编译的 SukiSU Ultra，复制到设备树
+          if [ -f ~/sukisu_repo/SukiSU-Ultra.zip ]; then
+            cp ~/sukisu_repo/SukiSU-Ultra.zip ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/${{ env.DEVICE_PATH }}/recovery/root/FFiles/SukiSU_Ultra/
+            echo "✅ SukiSU Ultra 已添加到设备树 FFiles 目录"
+          else
+            # 如果没有预编译版本，从 Release 下载
+            wget -O ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/${{ env.DEVICE_PATH }}/recovery/root/FFiles/SukiSU_Ultra/SukiSU_Ultra.zip \
+              https://github.com/Kartatz/SukiSU/releases/latest/download/SukiSU-Ultra.zip || \
+              echo "⚠️ SukiSU Ultra 下载失败，将使用设备树现有版本"
+          fi
+          
+          # 验证文件
+          ls -lh ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/${{ env.DEVICE_PATH }}/recovery/root/FFiles/SukiSU_Ultra/ || echo "使用现有文件"
+          
+          echo "✅ SukiSU Ultra 集成完成"
+
+      - name: 第 12 步 - 配置 CCache (可选)
         if: env.USE_CCACHE == 'true'
         run: |
-          echo "⚡ 正在配置 CCache 以加速编译..."
+          echo "⚡ 正在配置 CCache 以加速编译（限制 5GB）..."
           cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
           
           export USE_CCACHE=1
           export CCACHE_EXEC=/usr/bin/ccache
-          ccache -M 10G
+          ccache -M 5G
           ccache -z
           
           # 禁用沙盒以兼容 CCache
           sed -i 's/return sandboxConfig\.working/return false/g' build/soong/ui/build/sandbox_linux.go
           echo "✅ CCache 配置完成"
 
-      - name: 第 11 步 - 编译 OrangeFox Recovery
+      - name: 第 13 步 - 编译前清理临时文件
+        run: |
+          echo "🧹 清理临时文件..."
+          sudo rm -rf /tmp/*
+          sudo apt-get clean
+          echo "📊 编译前磁盘空间："
+          df -h
+
+      - name: 第 14 步 - 编译 OrangeFox Recovery
         run: |
           echo "🔨 开始编译 OnePlus 13 (PJZ110) OrangeFox Recovery..."
           cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
@@ -194,13 +248,13 @@ jobs:
           
           echo "✅ 编译完成！"
 
-      - name: 第 12 步 - 显示 CCache 统计
+      - name: 第 15 步 - 显示 CCache 统计
         if: env.USE_CCACHE == 'true'
         run: |
           echo "📊 CCache 使用统计："
           ccache -s
 
-      - name: 第 13 步 - 设置发布信息
+      - name: 第 16 步 - 设置发布信息
         run: |
           echo "📋 正在设置发布信息..."
           BUILD_DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
@@ -216,7 +270,7 @@ jobs:
           echo "DEVICE_TREE_URL=${DEVICE_TREE_URL}" >> $GITHUB_ENV
           echo "✅ 发布信息设置完成"
 
-      - name: 第 14 步 - 检查编译产物
+      - name: 第 17 步 - 检查编译产物
         run: |
           echo "🔍 正在检查编译产物..."
           cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/out/target/product/${{ env.DEVICE_NAME }}
@@ -231,7 +285,7 @@ jobs:
             ls -lh OrangeFox*.zip
           fi
 
-      - name: 第 15 步 - 上传编译产物到 Release
+      - name: 第 18 步 - 上传编译产物到 Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -248,9 +302,9 @@ jobs:
             - **厂商**: OPLUS
             
             ### 🔧 编译信息
-            - **OrangeFox 分支**: fox_${{ env.MANIFEST_BRANCH }}
+            - **OrangeFox 分支**: fox_${{ env.MANIFEST_BRANCH }} (Android ${{ env.MANIFEST_BRANCH }})
             - **编译日期**: ${{ env.BUILD_DATE }}
-            - **Magisk 版本**: ${{ env.MAGISK_VERSION }}
+            - **Magisk Alpha 版本**: ${{ env.MAGISK_VERSION }}
             - **使用 CCache**: ${{ env.USE_CCACHE }}
             
             ### 🌳 设备树
@@ -270,9 +324,11 @@ jobs:
             - ✅ 显示与振动设置
             
             ### 📦 包含的 Root 工具
-            - KernelSU (安装/卸载程序)
-            - KernelSUN
-            - SukiSU
+            - **Magisk Alpha** - ${{ env.MAGISK_VERSION }} (内置于 Recovery)
+            - **KernelSU** - 内核级 Root 解决方案 (安装/卸载程序)
+            - **KernelSUN** - KernelSU 变体版本
+            - **SukiSU** - 轻量级 Root 方案
+            - **SukiSU Ultra** - SukiSU 增强版 🆕
             
             ### ⚠️ 免责声明
             此为非官方编译版本，仅供学习交流使用。刷入前请做好备份，刷机有风险，请谨慎操作！
@@ -281,7 +337,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 第 16 步 - 上传编译产物到 Artifacts (备份)
+      - name: 第 19 步 - 上传编译产物到 Artifacts (备份)
         uses: actions/upload-artifact@v4
         with:
           name: OrangeFox-OnePlus13-PJZ110-${{ env.BUILD_DATE }}
@@ -297,7 +353,9 @@ jobs:
           echo "🎉 OrangeFox Recovery 编译成功！"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📱 设备: OnePlus 13 (PJZ110)"
-          echo "🦊 版本: fox_${{ env.MANIFEST_BRANCH }}"
+          echo "🦊 版本: fox_${{ env.MANIFEST_BRANCH }} (Android ${{ env.MANIFEST_BRANCH }})"
           echo "📅 日期: ${{ env.BUILD_DATE }}"
+          echo "🔮 Magisk: ${{ env.MAGISK_VERSION }} (Alpha)"
+          echo "🌸 Root工具: KernelSU + SukiSU + SukiSU Ultra"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 

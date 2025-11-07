@@ -20,8 +20,8 @@ git push origin main
 2. 选择 **构建 OnePlus 13 (PJZ110) OrangeFox Recovery**
 3. 点击 **Run workflow** 按钮
 4. 配置以下参数（可选）：
-   - **OrangeFox 分支版本**: 选择 `12.1` 或 `14.1`（默认：`14.1`）
-   - **Magisk 版本**: 输入 Magisk 版本号（默认：`v28.1`）
+   - **OrangeFox 分支版本 (Android 版本)**: 选择 `15.0` 或 `16.0`（默认：`15.0`）
+   - **Magisk Alpha 版本**: 输入 Magisk Alpha 版本号（默认：`v29.0-alpha`）
    - **启用 CCache 加速编译**: 是否启用 CCache（默认：`true`）
 
 ## 📦 工作流步骤
