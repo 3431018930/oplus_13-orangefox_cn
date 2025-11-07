@@ -1,85 +1,180 @@
 #
-#	This file is part of the OrangeFox Recovery Project
-# 	Copyright (C) 2020-2021 The OrangeFox Recovery Project
+# Copyright (C) 2025 The Android Open Source Project
+# Copyright (C) 2025 SebaUbuntu's TWRP device tree generator
 #
-#	OrangeFox is free software: you can redistribute it and/or modify
-#	it under the terms of the GNU General Public License as published by
-#	the Free Software Foundation, either version 3 of the License, or
-#	any later version.
+# SPDX-License-Identifier: Apache-2.0
 #
-#	OrangeFox is distributed in the hope that it will be useful,
-#	but WITHOUT ANY WARRANTY; without even the implied warranty of
-#	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#	GNU General Public License for more details.
-#
-# 	This software is released under GPL version 3 or any later version.
-#	See <http://www.gnu.org/licenses/>.
-#
-# 	Please maintain this if you use this script or any part of it
-#
-FDEVICE="PJZ110"
 
-fox_get_target_device() {
-local chkdev=$(echo "$BASH_SOURCE" | grep -w $FDEVICE)
-   if [ -n "$chkdev" ]; then 
-      FOX_BUILD_DEVICE="$FDEVICE"
-   else
-      chkdev=$(set | grep BASH_ARGV | grep -w $FDEVICE)
-      [ -n "$chkdev" ] && FOX_BUILD_DEVICE="$FDEVICE"
-   fi
-}
+DEVICE_PATH := device/oplus/PJZ110
 
-if [ -z "$1" -a -z "$FOX_BUILD_DEVICE" ]; then
-   fox_get_target_device
-fi
 
-if [ "$1" = "$FDEVICE" -o "$FOX_BUILD_DEVICE" = "$FDEVICE" ]; then
-	export LC_ALL="C"
-	export FOX_AB_DEVICE=1
-	export OF_AB_DEVICE_WITH_RECOVERY_PARTITION=1
-	export OF_RECOVERY_AB_FULL_REFLASH_RAMDISK=1
-	export OF_USE_LZ4_COMPRESSION=1
-	export FOX_USE_TAR_BINARY=1
-	export FOX_USE_SED_BINARY=1
-	export FOX_USE_LZ4_BINARY=1
-	export FOX_USE_ZSTD_BINARY=1
-	export FOX_USE_DATE_BINARY=1
-	export OF_TWRP_COMPATIBILITY_MODE=1
-	export OF_NO_RELOAD_AFTER_DECRYPTION=1
-	export OF_NO_TREBLE_COMPATIBILITY_CHECK=1
-	export FOX_DELETE_AROMAFM=1
-	export OF_USE_GREEN_LED=0
-	export FOX_VANILLA_BUILD=1
-	export OF_NO_MIUI_PATCH_WARNING=1
-	export OF_DISABLE_MIUI_OTA_BY_DEFAULT=1
-	export FOX_USE_GREP_BINARY=1
-	export FOX_USE_BUSYBOX_BINARY=1
-	export FOX_USE_XZ_UTILS=1
-	export OF_FORCE_PREBUILT_KERNEL=1
-	export FOX_VIRTUAL_AB_DEVICE=1
-	export OF_DYNAMIC_FULL_SIZE=15354134528
-	export OF_ENABLE_FS_COMPRESSION=1
-	export OF_DISPLAY_FORMAT_FILESYSTEMS_DEBUG_INFO=1
-	export FOX_ALLOW_EARLY_SETTINGS_LOAD=1
-	export OF_UNBIND_SDCARD_F2FS=1
-	export OF_WIPE_METADATA_AFTER_DATAFORMAT=1
-	export FOX_USE_UPDATED_MAGISKBOOT=1
-	export OF_FORCE_DATA_FORMAT_F2FS=1
-	export FOX_MOVE_MAGISK_INSTALLER_TO_RAMDISK=1
-	export FOX_USE_FSCK_EROFS_BINARY=1
-	export FOX_USE_PATCHELF_BINARY=1
-	export OF_OPTIONS_LIST_NUM=6
+# For building with minimal manifest
+ALLOW_MISSING_DEPENDENCIES := true
+BUILD_BROKEN_DUP_RULES := true
+BUILD_BROKEN_ELF_PREBUILT_PRODUCT_COPY_FILES := true
 
-	# For OnePlus 13
-	export FOX_VARIANT="OnePlus_13"
-	export OF_MAINTAINER="Jonas Salo & Daniel Springer"
-	export OF_SCREEN_H=2376
- 	export TARGET_DEVICE_ALT="OP5D55L1, OP5D0DL1"
-	export FOX_TARGET_DEVICES="OP5D55L1, OP5D0DL1"
-   	export FOX_USE_DMSETUP=1
-	export OF_STATUS_INDENT_LEFT=20
-	export OF_STATUS_INDENT_RIGHT=20
- 	export OF_ENABLE_ALL_PARTITION_TOOLS=1
-	export OF_WORKAROUND_BACKUP_BUG=1
-fi
-#
+BUILD_BROKEN_NINJA_USES_ENV_VARS += RTIC_MPGEN
+BUILD_BROKEN_PLUGIN_VALIDATION := soong-libaosprecovery_defaults soong-libguitwrp_defaults soong-libminuitwrp_defaults soong-vold_defaults
+
+# Architecture
+TARGET_ARCH := arm64
+TARGET_ARCH_VARIANT := armv8-a
+TARGET_CPU_ABI := arm64-v8a
+TARGET_CPU_VARIANT := generic
+TARGET_CPU_VARIANT_RUNTIME := oryon
+
+# Power
+ENABLE_CPUSETS := true
+ENABLE_SCHEDBOOST := true
+
+# Bootloader
+PRODUCT_PLATFORM := sun
+TARGET_BOOTLOADER_BOARD_NAME := $(PRODUCT_RELEASE_NAME)
+TARGET_NO_BOOTLOADER := true
+
+# Platform
+TARGET_BOARD_PLATFORM := sm8750
+TARGET_BOARD_PLATFORM_GPU := qcom-adreno830
+QCOM_BOARD_PLATFORMS += sm8750
+
+# Kernel
+TARGET_KERNEL_ARCH            := arm64
+TARGET_KERNEL_HEADER_ARCH     := arm64
+BOARD_KERNEL_IMAGE_NAME       := Image
+BOARD_BOOT_HEADER_VERSION     := 4
+BOARD_KERNEL_PAGESIZE         := 4096
+TARGET_PREBUILT_KERNEL        := kernel/prebuilts/6.6/arm64/kernel-6.6
+BOARD_MKBOOTIMG_ARGS          += --header_version $(BOARD_BOOT_HEADER_VERSION)
+BOARD_MKBOOTIMG_ARGS          += --pagesize $(BOARD_KERNEL_PAGESIZE)
+
+BOARD_RAMDISK_USE_LZ4 := true
+
+# A/B
+AB_OTA_UPDATER := true
+AB_OTA_PARTITIONS := \
+    boot \
+    init_boot \
+    vendor_boot \
+    dtbo \
+    odm \
+    product \
+    system \
+    system_ext \
+    system_dlkm \
+    vbmeta \
+    vbmeta_system \
+	vbmeta_vendor \
+    vendor \
+    vendor_dlkm
+
+# AB partitions for oplus
+AB_OTA_PARTITIONS += \
+    my_bigball \
+    my_carrier \
+    my_company \
+    my_engineering \
+    my_heytap \
+    my_manifest \
+    my_preload \
+    my_product \
+    my_region \
+    my_stock
+
+# Verified Boot
+BOARD_AVB_ENABLE := true
+
+# Partitions
+BOARD_PROPERTY_OVERRIDES_SPLIT_ENABLED := true
+BOARD_RECOVERYIMAGE_PARTITION_SIZE := 104857600
+
+# Dynamic Partition
+BOARD_SUPER_PARTITION_SIZE := 15354134528
+BOARD_SUPER_PARTITION_GROUPS := qti_dynamic_partitions
+BOARD_QTI_DYNAMIC_PARTITIONS_SIZE := 15349940224
+BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST := \
+	system system_ext product vendor vendor_dlkm odm
+BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST += \
+	my_bigball my_carrier my_company my_engineering my_heytap my_manifest my_preload my_product my_region my_stock
+
+BOARD_PARTITION_LIST := $(call to-upper, $(BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST))
+$(foreach p, $(BOARD_PARTITION_LIST), $(eval BOARD_$(p)IMAGE_FILE_SYSTEM_TYPE := erofs))
+$(foreach p, $(BOARD_PARTITION_LIST), $(eval TARGET_COPY_OUT_$(p) := $(call to-lower, $(p))))
+BOARD_VENDOR_DLKMIMAGE_FILE_SYSTEM_TYPE := ext4
+
+# File systems
+BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := f2fs
+TARGET_USERIMAGES_USE_EXT4 := true
+TARGET_USERIMAGES_USE_F2FS := true
+
+# Crypto
+BOARD_USES_METADATA_PARTITION := true
+BOARD_USES_QCOM_FBE_DECRYPTION := true
+TW_INCLUDE_CRYPTO := true
+TW_INCLUDE_CRYPTO_FBE := true
+TW_INCLUDE_FBE_METADATA_DECRYPT := true
+TW_USE_FSCRYPT_POLICY := 2
+
+# Recovery
+BOARD_EXCLUDE_KERNEL_FROM_RECOVERY_IMAGE := true
+TARGET_RECOVERY_PIXEL_FORMAT := "RGBX_8888"
+TW_INCLUDE_FASTBOOTD := true
+TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery.fstab
+TW_SKIP_ADDITIONAL_FSTAB := true
+
+# Tool
+TW_INCLUDE_LIBRESETPROP := true
+TW_INCLUDE_LPDUMP := true
+TW_INCLUDE_LPTOOLS := true
+TW_INCLUDE_REPACKTOOLS := true
+TW_INCLUDE_RESETPROP := true
+
+# Debug
+TARGET_USES_LOGD := true
+TWRP_INCLUDE_LOGCAT := true
+TARGET_RECOVERY_DEVICE_MODULES += debuggerd
+TARGET_RECOVERY_DEVICE_MODULES += strace
+RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/debuggerd
+RECOVERY_BINARY_SOURCE_FILES += $(TARGET_OUT_EXECUTABLES)/strace
+
+# TWRP display
+TW_BRIGHTNESS_PATH := "/sys/class/backlight/panel0-backlight/brightness"
+TW_DEFAULT_BRIGHTNESS := 2047
+TW_FRAMERATE := 120
+TW_MAX_BRIGHTNESS := 4094
+TW_NO_SCREEN_BLANK := true
+TW_SCREEN_BLANK_ON_BOOT := true
+TW_THEME := portrait_hdpi
+TARGET_USES_VULKAN := true
+
+# TWRP file system
+RECOVERY_SDCARD_ON_DATA := true
+TARGET_USES_MKE2FS := true
+TW_ENABLE_FS_COMPRESSION := true
+TW_INCLUDE_FUSE_EXFAT := true
+TW_INCLUDE_FUSE_NTFS := true
+TW_INCLUDE_NTFS_3G := true
+TW_NO_EXFAT_FUSE := true
+
+# Version
+PLATFORM_VERSION := 99.87.36
+PLATFORM_VERSION_LAST_STABLE := $(PLATFORM_VERSION)
+PLATFORM_SECURITY_PATCH := 2099-12-31
+VENDOR_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
+BOOT_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
+TW_DEVICE_VERSION := OnePlus_13
+
+# Vibrator
+TW_SUPPORT_INPUT_AIDL_HAPTICS := true
+
+# Other TWRP Configurations
+TARGET_RECOVERY_QCOM_RTC_FIX := true
+TW_CUSTOM_CPU_TEMP_PATH := "/sys/class/thermal/thermal_zone45/temp" # CPU-0-0-0
+TW_EXCLUDE_APEX := true
+TW_EXCLUDE_DEFAULT_USB_INIT := true
+TW_DEFAULT_LANGUAGE := zh_CN
+TW_EXTRA_LANGUAGES := true
+TW_LOAD_VENDOR_MODULES := "oplus_bsp_synaptics_tcm2.ko oplus_bsp_tp_common.ko oplus_bsp_tp_custom.ko oplus_bsp_tp_focal_common.ko oplus_bsp_tp_ft3518.ko oplus_bsp_tp_ft3658u_spi.ko oplus_bsp_tp_ft3681.ko oplus_bsp_tp_ft3683g.ko oplus_bsp_tp_ft8057p.ko oplus_bsp_tp_goodix_comnon.ko oplus_bsp_tp_gt9916.ko oplus_bsp_tp_gt9966.ko oplus_bsp_tp_ilitek7807s.ko oplus_bsp_tp_ilitek_common.ko oplus_bsp_tp_notify.ko oplus_bsp_tp_novatek_common.ko oplus_bsp_tp_nt36528_noflash.ko oplus_bsp_tp_nt36532_noflash.ko oplus_bsp_tp_nt36672c_noflash.ko oplus_bsp_tp_syna_common.ko oplus_bsp_tp_tcm_S3908.ko oplus_bsp_tp_tcm_S3910.ko oplus_bsp_tp_td4377_noflash.ko q6_pdr_dlkm.ko q6_notifier_dlkm.ko snd_event_dlkm.ko gpr_dlkm.ko spf_core_dlkm.ko adsp_loader_dlkm.ko oplus_chg_v2.ko stm_st54se_gpio.ko nxp-nci.ko"
+TW_LOAD_VENDOR_MODULES_EXCLUDE_GKI := true
+TW_USE_SERIALNO_PROPERTY_FOR_DEVICE_ID := true
+TW_USE_TOOLBOX := true
+TW_INPUT_BLACKLIST := "hbtp_vm"
