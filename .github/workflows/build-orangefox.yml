@@ -110,10 +110,31 @@ jobs:
           echo "🦊 正在同步 OrangeFox ${{ env.MANIFEST_BRANCH }} 源码..."
           mkdir -p ${GITHUB_WORKSPACE}/OrangeFox
           cd ${GITHUB_WORKSPACE}/OrangeFox
-          git clone https://gitlab.com/OrangeFox/sync.git
+          
+          # 克隆同步脚本
+          if ! git clone https://gitlab.com/OrangeFox/sync.git; then
+            echo "❌ 克隆 OrangeFox sync 仓库失败"
+            exit 1
+          fi
+          
           cd sync
-          ./orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
+          
+          # 执行同步脚本
+          if ! ./orangefox_sync.sh --branch ${{ env.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}; then
+            echo "❌ OrangeFox 源码同步失败"
+            exit 1
+          fi
+          
+          # 验证目录是否创建成功
+          if [ ! -d "${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}" ]; then
+            echo "❌ 错误: fox_${{ env.MANIFEST_BRANCH }} 目录未创建"
+            echo "📂 当前 OrangeFox 目录内容:"
+            ls -la ${GITHUB_WORKSPACE}/OrangeFox/
+            exit 1
+          fi
+          
           echo "✅ OrangeFox 源码同步完成"
+          echo "📂 OrangeFox 路径: ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}"
           
           echo "📊 同步后的磁盘空间："
           df -h
@@ -121,15 +142,33 @@ jobs:
       - name: 第 7 步 - 克隆设备树
         run: |
           echo "🌳 正在克隆 OnePlus 13 (PJZ110) 设备树..."
+          
+          # 验证 OrangeFox 目录是否存在
+          if [ ! -d "${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}" ]; then
+            echo "❌ 错误: OrangeFox 源码目录不存在！"
+            echo "📍 预期路径: ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}"
+            echo "📂 当前工作区内容:"
+            ls -la ${GITHUB_WORKSPACE}/
+            if [ -d "${GITHUB_WORKSPACE}/OrangeFox" ]; then
+              echo "📂 OrangeFox 目录内容:"
+              ls -la ${GITHUB_WORKSPACE}/OrangeFox/
+            fi
+            exit 1
+          fi
+          
+          # 获取设备树的提交 ID（在复制之前）
+          cd ${GITHUB_WORKSPACE}/device-tree
+          COMMIT_ID=$(git rev-parse HEAD)
+          echo "COMMIT_ID=${COMMIT_ID}" >> $GITHUB_ENV
+          echo "📝 设备树提交 ID: ${COMMIT_ID}"
+          
+          # 创建设备树目录并复制文件
           cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}
           mkdir -p ./${{ env.DEVICE_PATH }}
           cp -r ${GITHUB_WORKSPACE}/device-tree/* ./${{ env.DEVICE_PATH }}/
           
-          cd ${{ env.DEVICE_PATH }}
-          COMMIT_ID=$(git rev-parse HEAD)
-          echo "COMMIT_ID=${COMMIT_ID}" >> $GITHUB_ENV
-          echo "📝 设备树提交 ID: ${COMMIT_ID}"
           echo "✅ 设备树克隆完成"
+          echo "📂 设备树位置: ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ env.MANIFEST_BRANCH }}/${{ env.DEVICE_PATH }}"
 
       - name: 第 8 步 - 下载 Magisk Alpha 版本
         run: |
